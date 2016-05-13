@@ -88,18 +88,35 @@ type Row interface {
 // Next proceeds to the next Result or buffers the entierty of the next result.
 // If there is an error with the query that returns Next, it will be returned in
 // the error value in any of it's methods.
+// The connection is returned after the last result or buffer has been read or
+// Close is explicitly called.
 type Next interface {
 	Result() (Result, error)
 	Buffer() (*Buffer, error)
-	Error() error
+
+	// Close will allow any connection to return to the pool.
+	// Any subsequent calls to Result or Buffer will return an error.
+	// If "f" is nil, it is simply closed. If "f" is not nil then it is closed
+	// after "f" returns.
+	//
+	// If the query context is cancelled the result is also closed and the
+	// connection returned to the pool.
+	Close(f func(Next) error) error
 }
 
 // Result provides a way to iterate over a query result.
 type Result interface {
-	Close() error
+	// Prep and Prepx should be called before Scan. If value is a io.Writer
+	// and the driver supports it, the driver may write directly into the value.
+	// Prepared values are not written to the Row buffer returned in Scan.
 	Prep(name string, value interface{}) Result
 	Prepx(index int, value interface{}) Result
+
+	// Scan will read a Row, populate any values used in Prep.
+	// Row will be nil when last row has been read.
 	Scan() (Row, error)
+
+	// Return the column schema for result.
 	Schema() Schema
 }
 
