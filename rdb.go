@@ -28,7 +28,7 @@ const (
 
 // Queryer queries the database.
 type Queryer interface {
-	Query(ctx context.Context, cmd *Command, params ...Param) (Next, error)
+	Query(ctx context.Context, cmd *Command, params ...Param) Next
 }
 
 // Pool represents a pool of database connections.
@@ -43,7 +43,7 @@ type Pool interface {
 	Connection() (Connection, error)
 
 	// Will attempt to connect to the database and disconnect. Must not impact any existing connections.
-	Ping(tx context.Context) error
+	Ping(ctx context.Context) error
 
 	// Status of the current pool.
 	Status() PoolStatus
@@ -86,9 +86,12 @@ type Row interface {
 }
 
 // Next proceeds to the next Result or buffers the entierty of the next result.
+// If there is an error with the query that returns Next, it will be returned in
+// the error value in any of it's methods.
 type Next interface {
 	Result() (Result, error)
-	Buffer() (Buffer, error)
+	Buffer() (*Buffer, error)
+	Error() error
 }
 
 // Result provides a way to iterate over a query result.
