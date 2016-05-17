@@ -41,7 +41,7 @@ func (next nextError) Result() (Result, error) {
 func (next nextError) Buffer() (*Buffer, error) {
 	return nil, next.err
 }
-func (next nextError) Close(func(Next) error) error {
+func (next nextError) Close() error {
 	return next.err
 }
 

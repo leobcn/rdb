@@ -4,9 +4,15 @@
 
 // Package rdb is a relational database interface for products that use SQL.
 // Multiple sequential results and types are supported.
+//
+// Each logical action (for example http request) should have a context
+// associated with it that is cancelled when it is complete. This will ensure
+// individual query connections are never leaked.
 package rdb
 
 import (
+	"bytes"
+
 	"golang.org/x/net/context"
 )
 
@@ -48,7 +54,34 @@ type Pool interface {
 	// Status of the current pool.
 	Status() PoolStatus
 
+	SetTrace(Tracer)
+
 	Queryer
+}
+
+// SQLError represents a sql error.
+// Useful for showing the exact line number of a query error.
+type SQLError interface {
+	Error() string
+	LineNumber() int
+	ErrorCode() int
+}
+
+// ErrorList represents a list of errors.
+type ErrorList struct {
+	List []error
+}
+
+// Error returns the error message.
+func (err ErrorList) Error() string {
+	buf := &bytes.Buffer{}
+	for index, item := range err.List {
+		if index != 0 {
+			buf.WriteRune('\n')
+		}
+		buf.WriteString(item.Error())
+	}
+	return buf.String()
 }
 
 // Connection represents a single connection to the database.
@@ -96,12 +129,9 @@ type Next interface {
 
 	// Close will allow any connection to return to the pool.
 	// Any subsequent calls to Result or Buffer will return an error.
-	// If "f" is nil, it is simply closed. If "f" is not nil then it is closed
-	// after "f" returns.
-	//
 	// If the query context is cancelled the result is also closed and the
 	// connection returned to the pool.
-	Close(f func(Next) error) error
+	Close() error
 }
 
 // Result provides a way to iterate over a query result.
@@ -131,16 +161,16 @@ type Param struct {
 	// Check the driver documentation used for more information.
 	Type Type
 
+	// Set to true if the parameter is an output parameter.
+	// If true, the value member should be provided through a pointer.
+	Out bool
+
 	// Paremeter Length. Useful for variable length types that may check truncation.
 	Length int
 
 	// Value for input parameter.
 	// If the value is an io.Reader it will read the value directly to the wire.
 	Value interface{}
-
-	// Set to true if the parameter is an output parameter.
-	// If true, the value member should be provided through a pointer.
-	Out bool
 }
 
 // Command represents a SQL command and can be used from many different
@@ -149,6 +179,10 @@ type Param struct {
 type Command struct {
 	// The SQL to be used in the command.
 	SQL string
+
+	// StringAsBytes should be set to true for strings to be returned as
+	// bytes to reduce allocations.
+	StringAsBytes bool
 
 	// If set to true silently truncates text longer then the field.
 	// If this is set to false text truncation will result in an error.
