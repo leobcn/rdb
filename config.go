@@ -51,15 +51,13 @@ type Config struct {
 //   driver://[username:password@][url[:port]]/[Instance]?db=mydatabase&opt1=valA&opt2=valB
 //   sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB
 //   sqlite:///srv/folder/file.sqlite3?opt1=valA&opt2=valB
-//   ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s
+//   ms://TESTU@localhost/SqlExpress?db=master
 // This will attempt to find the driver to load additional parameters.
 //   Additional field options:
 //      db=<string>:                  Database
-//      dial_timeout=<time.Duration>: DialTimeout
 //      init_cap=<int>:               PoolInitCapacity
 //      max_cap=<int>:                PoolMaxCapacity
 //      idle_timeout=<time.Duration>: PoolIdleTimeout
-//      query_timeout=<time.Duration>:QueryTimeout
 func ParseConfigURL(connectionString string) (*Config, error) {
 	u, err := url.Parse(connectionString)
 	if err != nil {
