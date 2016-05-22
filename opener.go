@@ -41,7 +41,7 @@ func Open(ctx context.Context, config *Config) (Pool, error) {
 
 // Opener is used to create new database connection pools.
 type Opener interface {
-	CanOpen(contig *Config) bool
+	CanOpen(config *Config) bool
 	Open(ctx context.Context, config *Config) (Pool, error)
 }
 

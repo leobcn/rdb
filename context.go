@@ -62,3 +62,22 @@ func Begin(ctx context.Context, iso Isolation) (Transaction, error) {
 	}
 	return pool.Begin(ctx, iso)
 }
+
+// QuerySet runs command and returns a list of buffers and closes any connections
+// it has opened before returning.
+func QuerySet(ctx context.Context, cmd *Command, params ...Param) (BufferSet, error) {
+	nx := Query(ctx, cmd, params...)
+	defer nx.Close()
+
+	var set BufferSet = make([]*Buffer, 0, 3)
+	for {
+		b, err := nx.Buffer()
+		if err != nil {
+			return set, err
+		}
+		if b == nil {
+			return set, nil
+		}
+		set = append(set, b)
+	}
+}

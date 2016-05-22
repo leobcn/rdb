@@ -8,7 +8,7 @@
 // Each logical action (for example http request) should have a context
 // associated with it that is cancelled when it is complete. This will ensure
 // individual query connections are never leaked.
-package rdb
+package rdb // import "github.com/kardianos/rdb"
 
 import (
 	"bytes"

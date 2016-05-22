@@ -15,7 +15,12 @@ import (
 // Drivers may have additional properties held in KV.
 // If a driver is file based, the file name should be in the "Instance" field.
 type Config struct {
+	// Registered driver name for the database.
 	DriverName string
+
+	// Raw is the pre-parsed connection string, possibly directly
+	// used by the driver opener.
+	Raw string
 
 	Username string
 	Password string
@@ -85,6 +90,7 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 
 	conf := &Config{
 		DriverName: u.Scheme,
+		Raw:        connectionString,
 		Username:   user,
 		Password:   pass,
 		Hostname:   host,
