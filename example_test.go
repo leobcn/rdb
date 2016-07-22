@@ -2,15 +2,17 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
+// +build go1.7
+
 package rdb_test
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/kardianos/rdb"
-	"golang.org/x/net/context"
 )
 
 func Example() {
@@ -31,8 +33,8 @@ func Example() {
 	}()
 
 	// In go1.7+ context can be stored in the "http.Request.Context()" method.
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-		table, err := rdb.Query(ctx, &rdb.Command{
+	logHandler := func(w http.ResponseWriter, r *http.Request) {
+		table, err := rdb.Query(r.Context(), &rdb.Command{
 			SQL: `select ID, Message from Log;`,
 		}).Buffer()
 		if err != nil {
@@ -51,6 +53,13 @@ func Example() {
 		ctx, cancel := context.WithTimeout(ctx, time.Second*3)
 		defer cancel()
 
-		handler(ctx, w, r) // In go1.7+ context can be stored in "r".
+		r = r.WithContext(ctx)
+
+		switch r.URL.Path {
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		case "/api/db/log":
+			logHandler(w, r) // In go1.7+ context can be stored in "r".
+		}
 	})
 }

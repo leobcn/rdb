@@ -5,15 +5,15 @@
 // Package rdb is a relational database interface for products that use SQL.
 // Multiple sequential results and types are supported.
 //
-// Each logical action (for example http request) should have a context
-// associated with it that is cancelled when it is complete. This will ensure
-// individual query connections are never leaked.
+// Each logical action (for example http request) must have a context
+// associated with it that should be cancelled when it is complete. This ensures
+// individual connections are never leaked.
 package rdb // import "github.com/kardianos/rdb"
 
 import (
 	"bytes"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 // Isolation is used to set the isolation of a transaction.
@@ -125,7 +125,9 @@ type Row interface {
 // Close is explicitly called.
 type Next interface {
 	Result() (Result, error)
+
 	Buffer() (*Buffer, error)
+	BufferSet() (BufferSet, error)
 
 	// Close will allow any connection to return to the pool.
 	// Any subsequent calls to Result or Buffer will return an error.
@@ -148,6 +150,10 @@ type Result interface {
 
 	// Return the column schema for result.
 	Schema() Schema
+
+	// Close will allow any connection to return to the pool.
+	// Same as calling Next.Close().
+	Close() error
 }
 
 // Param provides values into a query.
@@ -164,6 +170,9 @@ type Param struct {
 	// Set to true if the parameter is an output parameter.
 	// If true, the value member should be provided through a pointer.
 	Out bool
+
+	// Do not send this value to the trace.
+	NoTrace bool
 
 	// Paremeter Length. Useful for variable length types that may check truncation.
 	Length int

@@ -5,10 +5,10 @@
 package databasesql
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/kardianos/rdb"
-	"golang.org/x/net/context"
 )
 
 func init() {

@@ -7,7 +7,7 @@ package rdb
 import (
 	"errors"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 type key int
@@ -39,6 +39,9 @@ func (next nextError) Result() (Result, error) {
 	return nil, next.err
 }
 func (next nextError) Buffer() (*Buffer, error) {
+	return nil, next.err
+}
+func (next nextError) BufferSet() (BufferSet, error) {
 	return nil, next.err
 }
 func (next nextError) Close() error {
