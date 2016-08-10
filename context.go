@@ -7,7 +7,7 @@ package rdb
 import (
 	"errors"
 
-	"context"
+	"golang.org/x/net/context"
 )
 
 type key int

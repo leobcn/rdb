@@ -7,12 +7,12 @@
 package rdb_test
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/kardianos/rdb"
+	"golang.org/x/net/context"
 )
 
 func Example() {

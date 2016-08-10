@@ -13,7 +13,7 @@ package rdb // import "github.com/kardianos/rdb"
 import (
 	"bytes"
 
-	"context"
+	"golang.org/x/net/context"
 )
 
 // Isolation is used to set the isolation of a transaction.

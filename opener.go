@@ -8,7 +8,7 @@ import (
 	"errors"
 	"sync"
 
-	"context"
+	"golang.org/x/net/context"
 )
 
 var (

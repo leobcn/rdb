@@ -14,11 +14,11 @@
 package databasesql // import "github.com/kardianos/rdb/databasesql"
 
 import (
-	"context"
 	"database/sql"
 
 	"github.com/kardianos/rdb"
 	"github.com/pkg/errors"
+	"golang.org/x/net/context"
 )
 
 var (
