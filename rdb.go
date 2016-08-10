@@ -34,19 +34,33 @@ const (
 
 // Queryer queries the database.
 type Queryer interface {
+	// Query runs a command against the system. The supplied context
+	// will close the query when it is cancelled.
 	Query(ctx context.Context, cmd *Command, params ...Param) Next
+}
+
+// Preparer prepares a statement for execution.
+type Preparer interface {
+	// Prepare takes a command and returns a prepared statement.
+	// The statement is closed when the supplied contex to Prepare
+	// is cancelled.
+	Prepare(ctx context.Context, cmd *Command) (Statement, error)
 }
 
 // Pool represents a pool of database connections.
 type Pool interface {
 	// BeginLevel starts a Transaction with the specified isolation level.
+	// If the context is cancelled before the transaction is committed, the
+	// transaction attempts to roll back before closing.
 	Begin(ctx context.Context, iso Isolation) (Transaction, error)
 
 	// Close the connection pool.
 	Close()
 
 	// Connection returns a dedicated database connection from the connection pool.
-	Connection() (Connection, error)
+	// When the context is cancelled the connection will be closed and returned
+	// to the connection pool.
+	Connection(ctx context.Context) (Connection, error)
 
 	// Will attempt to connect to the database and disconnect. Must not impact any existing connections.
 	Ping(ctx context.Context) error
@@ -54,9 +68,8 @@ type Pool interface {
 	// Status of the current pool.
 	Status() PoolStatus
 
-	SetTrace(Tracer)
-
 	Queryer
+	Preparer
 }
 
 // SQLError represents a sql error.
@@ -102,6 +115,17 @@ type Transaction interface {
 
 	// Create a save point in the transaction.
 	SavePoint(ctx context.Context, name string) error
+
+	// Commit the transaction.
+	Commit(ctx context.Context) error
+}
+
+// Statement represents a prepared statement. On most systems this takes out
+// a resource on the server and should be closed by closing the associated context
+// (see Preparer). It is not advised to use a Statement scoped to an application
+// or a long lived object, as a database restart will invalidate all statements.
+type Statement interface {
+	Exec(ctx context.Context, params ...Param) Next
 }
 
 // PoolStatus is the basic interface for database pool information.
@@ -189,20 +213,13 @@ type Command struct {
 	// The SQL to be used in the command.
 	SQL string
 
-	// StringAsBytes should be set to true for strings to be returned as
+	// TextAsBytes should be set to true for strings to be returned as
 	// bytes to reduce allocations.
-	StringAsBytes bool
+	TextAsBytes bool
 
 	// If set to true silently truncates text longer then the field.
 	// If this is set to false text truncation will result in an error.
 	TruncLongText bool
-
-	// If true the connection will attempt to lookup any cached prepared
-	// identifier. If the cached identifier is not found or if it is found
-	// to be invalid, it is renewed.
-	// When the connection or connection pool is closed any prepared statements
-	// are un-prepared.
-	Prepare bool
 
 	// Set the isolation level for the query or transaction.
 	Isolation Isolation

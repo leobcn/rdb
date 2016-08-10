@@ -5,9 +5,7 @@
 package rdb
 
 // Schema is a list of columns and related methods.
-type Schema struct {
-	Column []Column
-}
+type Schema []Column
 
 // Column information as reported by the database.
 type Column struct {

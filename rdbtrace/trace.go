@@ -2,16 +2,20 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-package rdb
+package rdbtrace
 
-import "time"
+import (
+	"time"
+
+	"github.com/kardianos/rdb"
+)
 
 // Tracer records a new query event.
 type Tracer interface {
 	// Event is called when a new query is invoked. Event
 	// should return null if no further tracing should be performed.
 	//
-	// Event is called for every pool.Begin, pool.Query, or pool.Connection.
+	// Event is called for every Pool.Begin, Pool.Query, Pool.Prepare, or Pool.Connection.
 	Event() TraceEvent
 }
 
@@ -20,7 +24,7 @@ type Tracer interface {
 type TraceEvent interface {
 	// QueryBegin is called when a new query is performed. May be called multiple
 	// times in the case of a transaction or connection.
-	QueryBegin(at time.Time, cmd *Command, params []Param) TraceEvent
+	QueryBegin(at time.Time, cmd *rdb.Command, params []rdb.Param) TraceEvent
 
 	// QueryEnd is called when the query returns from the database server.
 	QueryEnd(at time.Time) TraceEvent

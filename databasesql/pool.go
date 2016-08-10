@@ -5,6 +5,9 @@
 // Package databasesql provides a wrapper for "database/sql" drivers.
 //
 // TODO (DT): complete wrapping this package.
+// Limitations:
+//   Cannot cancel a query in progress due to underlying database/sql limitations.
+//   Does not respect rdb.Command.TextAsBytes parameter as the result data type is not available.
 //
 //   import _ "github.com/kardianos/rdb/databasesql"
 //   import _ "my-database-sql-driver"
@@ -13,7 +16,6 @@ package databasesql // import "github.com/kardianos/rdb/databasesql"
 import (
 	"context"
 	"database/sql"
-	"sync"
 
 	"github.com/kardianos/rdb"
 	"github.com/pkg/errors"
@@ -27,71 +29,190 @@ var (
 // Pool implements rdb.Pool.
 type Pool struct {
 	DB *sql.DB
-
-	lk   sync.RWMutex
-	stmt map[*rdb.Command]*sql.Stmt
 }
 
 type next struct {
+	ctx    context.Context
 	err    error
 	rows   *sql.Rows
-	params []rdb.Param
+	cancel func()
+
+	textAsBytes bool
+}
+
+type statement struct {
+	ctx  context.Context
+	stmt *sql.Stmt
+
+	truncateLongText bool
+	textAsBytes      bool
+}
+
+type transaction struct {
+	ctx context.Context
+	tx  *sql.Tx
+}
+type result struct {
+	rows *sql.Rows
+}
+
+func (n *next) init() {
+	if n.err != nil {
+		return
+	}
+	n.ctx, n.cancel = context.WithCancel(n.ctx)
+	go func() {
+		select {
+		case <-n.ctx.Done():
+			n.rows.Close()
+		}
+	}()
+}
+func (n *next) Prep(name string, value interface{}) rdb.Result {
+	panic(errTODO)
+	return n
+}
+func (n *next) Prepx(index int, value interface{}) rdb.Result {
+	panic(errTODO)
+	return n
+}
+func (n *next) Scan() (rdb.Row, error) {
+	return nil, errTODO
+}
+func (n *next) Schema() rdb.Schema {
+	names, _ := n.rows.Columns()
+	sch := make([]rdb.Column, len(names))
+	for i, name := range names {
+		sch[i] = rdb.Column{
+			Name:  name,
+			Index: i,
+		}
+	}
+	return sch
 }
 
 func (n *next) Result() (rdb.Result, error) {
-	return nil, errTODO
+	return n, n.err
 }
 func (n *next) Buffer() (*rdb.Buffer, error) {
 	return nil, errTODO
 }
+
+// BufferSet will only return a single buffer for database/sql drivers.
 func (n *next) BufferSet() (rdb.BufferSet, error) {
-	return nil, errNotSupported
-}
-func (n *next) Close() error {
-	return errTODO
+	buf, err := n.Buffer()
+	if buf != nil {
+		return rdb.BufferSet{buf}, err
+	}
+	return nil, err
 }
 
-func (p *Pool) makeArgs(params []rdb.Param) []interface{} {
-	return nil
+func (n *next) Close() error {
+	n.cancel()
+	return n.err
+}
+
+func (st *statement) Exec(ctx context.Context, params ...rdb.Param) rdb.Next {
+	if err := ctx.Err(); err != nil {
+		return &next{err: err}
+	}
+	rows, err := st.stmt.Query(makeArgs(st.truncateLongText, params))
+	if cerr := ctx.Err(); cerr != nil {
+		rows.Close()
+		err = cerr
+	}
+	n := &next{err: err, rows: rows, ctx: ctx, textAsBytes: st.textAsBytes}
+	n.init()
+	return n
+}
+
+func (tx *transaction) Query(ctx context.Context, cmd *rdb.Command, params ...rdb.Param) rdb.Next {
+	if err := ctx.Err(); err != nil {
+		return &next{err: err}
+	}
+	rows, err := tx.tx.Query(cmd.SQL, makeArgs(cmd.TruncLongText, params)...)
+	if cerr := ctx.Err(); cerr != nil {
+		rows.Close()
+		err = cerr
+	}
+	n := &next{err: err, rows: rows, ctx: ctx, textAsBytes: cmd.TextAsBytes}
+	n.init()
+	return n
+}
+func (tx *transaction) RollbackTo(ctx context.Context, name string) error {
+	return tx.tx.Rollback()
+}
+
+// SavePoint is not supported by database/sql.
+func (tx *transaction) SavePoint(ctx context.Context, name string) error {
+	return errNotSupported
+}
+func (tx *transaction) Commit(ctx context.Context) error {
+	return tx.tx.Commit()
+}
+
+func makeArgs(tuncLongText bool, params []rdb.Param) []interface{} {
+	out := make([]interface{}, len(params))
+	for i := range params {
+		out[i] = params[i].Value
+	}
+	return out
 }
 
 // Query sends a database query.
-// TODO (DT): Finish Query wrapper.
-// TODO (DT): Might want a config parameter that sets if named parameters are
-// substituted.
 func (p *Pool) Query(ctx context.Context, cmd *rdb.Command, params ...rdb.Param) rdb.Next {
-	if cmd.Prepare {
-		var err error
-		p.lk.RLock()
-		s, found := p.stmt[cmd]
-		p.lk.Unlock()
-
-		if !found {
-			// TODO (DT): add timeout with ctx.
-			s, err = p.DB.Prepare(cmd.SQL)
-			if err != nil {
-				return &next{err: errors.Wrapf(err, "prepare sql %q", cmd.Name)}
-			}
-			p.lk.Lock()
-			p.stmt[cmd] = s
-			p.lk.Unlock()
-		}
-		rows, err := s.Query(p.makeArgs(params)...)
-		if err != nil {
-			p.lk.Lock()
-			delete(p.stmt, cmd)
-			p.lk.Unlock()
-		}
-		return &next{err: err, rows: rows, params: params}
+	if err := ctx.Err(); err != nil {
+		return &next{err: err}
 	}
-	rows, err := p.DB.Query(cmd.SQL, p.makeArgs(params)...)
-	return &next{err: err, rows: rows, params: params}
+	rows, err := p.DB.Query(cmd.SQL, makeArgs(cmd.TruncLongText, params)...)
+	if cerr := ctx.Err(); cerr != nil {
+		rows.Close()
+		err = cerr
+	}
+	n := &next{err: err, rows: rows, ctx: ctx, textAsBytes: cmd.TextAsBytes}
+	n.init()
+	return n
+}
+
+func (p *Pool) Prepare(ctx context.Context, cmd *rdb.Command) (rdb.Statement, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s, err := p.DB.Prepare(cmd.SQL)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		s.Close()
+		return nil, err
+	}
+	st := &statement{
+		ctx:  ctx,
+		stmt: s,
+
+		truncateLongText: cmd.TruncLongText,
+		textAsBytes:      cmd.TextAsBytes,
+	}
+	return st, nil
 }
 
 // Begin starts a transaction.
-// TODO (DT): Finish Transaction wrapper.
 func (p *Pool) Begin(ctx context.Context, iso rdb.Isolation) (rdb.Transaction, error) {
-	return nil, nil
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	tx, err := p.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	t := &transaction{
+		ctx: ctx,
+		tx:  tx,
+	}
+	return t, nil
 }
 
 // Close the connection pool.
@@ -100,7 +221,7 @@ func (p *Pool) Close() {
 }
 
 // Connection is not supported for database/sql drivers.
-func (p *Pool) Connection() (rdb.Connection, error) {
+func (p *Pool) Connection(ctx context.Context) (rdb.Connection, error) {
 	return nil, errNotSupported
 }
 
@@ -114,14 +235,9 @@ func (p *Pool) Status() rdb.PoolStatus {
 	return p
 }
 
-// SetTrace sets a trace on the query process.
-func (p *Pool) SetTrace(rdb.Tracer) {
-
-}
-
 // Capacity returns the same as Available for database/sql drivers.
 func (p *Pool) Capacity() int {
-	// TODO (DT): No way to get true capacity.
+	// No way to get true capacity.
 	return p.DB.Stats().OpenConnections
 }
 
